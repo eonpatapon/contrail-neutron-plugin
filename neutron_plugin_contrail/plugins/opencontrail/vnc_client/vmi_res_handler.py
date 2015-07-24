@@ -157,15 +157,14 @@ class VMInterfaceMixin(object):
             # any exception return None
             return None
 
-    def get_port_gw_id(self, vm_ref, port_req_memo):
+    def _get_vm_device_id_owner(self, vm_ref, port_req_memo):
         # try to extract the gw id from the vm fq_name.
         # read the vm and si object only if necessary
         gw_id = self._extract_gw_id_from_vm_fq_name(vm_ref['to'][-1])
         if gw_id:
-            return gw_id
+            return (gw_id, n_constants.DEVICE_OWNER_ROUTER_GW)
 
         vm_uuid = vm_ref['uuid']
-        vm_obj = None
         vm_obj = port_req_memo['virtual-machines'].get(vm_uuid)
 
         if vm_obj is None:
@@ -173,7 +172,6 @@ class VMInterfaceMixin(object):
                 vm_obj = self._vnc_lib.virtual_machine_read(id=vm_uuid)
             except vnc_exc.NoIdError:
                 return None
-
             port_req_memo['virtual-machines'][vm_uuid] = vm_obj
 
         si_refs = vm_obj.get_service_instance_refs()
@@ -183,13 +181,23 @@ class VMInterfaceMixin(object):
         try:
             si_obj = self._vnc_lib.service_instance_read(
                 id=si_refs[0]['uuid'],
-                fields=["logical_router_back_refs"])
+                fields=["logical_router_back_refs",
+                        "loadbalancer_pool_back_refs"])
         except vnc_exc.NoIdError:
             return None
 
-        rtr_back_refs = getattr(si_obj, "logical_router_back_refs", None)
-        if rtr_back_refs:
-            return rtr_back_refs[0]['uuid']
+        lr_back_refs = getattr(si_obj, "logical_router_back_refs", None)
+        if lr_back_refs:
+            return (lr_back_refs[0]['uuid'],
+                    n_constants.DEVICE_OWNER_ROUTER_GW)
+
+        lbpool_back_refs = getattr(si_obj, "loadbalancer_pool_back_refs",
+                                   None)
+        if lbpool_back_refs:
+            return (lbpool_back_refs[0]['uuid'],
+                    n_constants.DEVICE_OWNER_LOADBALANCER)
+
+        return None
 
     def _get_vmi_device_id_owner(self, vmi_obj, port_req_memo):
         # port can be router interface or vm interface
@@ -207,11 +215,18 @@ class VMInterfaceMixin(object):
             if vm_ref['to'][-1] == vm_ref['uuid']:
                 device_id = vm_ref['to'][-1]
             else:
-                # this is a router gw port. Get the router id
-                rtr_uuid = self.get_port_gw_id(vm_ref, port_req_memo)
-                if rtr_uuid:
-                    device_id = rtr_uuid
-                    device_owner = n_constants.DEVICE_OWNER_ROUTER_GW
+                # this is a router/lbaas port
+                result = self._get_vm_device_id_owner(vm_ref, port_req_memo)
+                if result is not None:
+                    device_id, device_owner = result
+        elif vmi_obj.get_virtual_ip_back_refs():
+            vip_ref = vmi_obj.get_virtual_ip_back_refs()[0]
+            vip_obj = self._vnc_lib.virtual_ip_read(id=vip_ref['uuid'])
+
+            lbpool_refs = getattr(vip_obj, "loadbalancer_pool_refs", None)
+            if lbpool_refs:
+                return (lbpool_refs[0]['uuid'],
+                        n_constants.DEVICE_OWNER_LOADBALANCER)
 
         return device_id, device_owner
 
