@@ -216,7 +216,11 @@ class SGHandler(ResourceGetHandler, ResourceCreateHandler,
             parent_obj=proj_obj,
             security_group_entries=sg_rules,
             id_perms=id_perms)
-        self._resource_create(sg_obj)
+        # Avoid race condition
+        try:
+            self._resource_create(sg_obj)
+        except vnc_exc.RefsExistError:
+            return self.get_no_rule_security_group(create=False)
         return sg_obj
     # end _create_no_rule_sg
 
