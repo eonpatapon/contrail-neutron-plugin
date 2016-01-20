@@ -1,2 +1,2 @@
-vnc_api
-cfgm_common
+vnc_api==2016.01-15104735.cw
+cfgm_common==2016.01-15104810.cw
