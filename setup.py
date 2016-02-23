@@ -3,7 +3,6 @@
 #
 
 from setuptools import setup, find_packages
-from datetime import datetime
 
 
 def requirements(filename):
@@ -11,9 +10,21 @@ def requirements(filename):
         lines = f.read().splitlines()
     return lines
 
+
+def get_version():
+    import subprocess
+    from datetime import datetime
+    try:
+        branch=subprocess.check_output(['git', 'describe', '--tags', '--abbrev=0'])
+        sha=subprocess.check_output(['git', 'describe', '--always'])
+        return "%s+git%s" % (branch.strip(), sha.strip())
+    except subprocess.CalledProcessError:
+        return datetime.now().strftime('%Y.%m+%d%H%M%S.cw')
+
+
 setup(
     name='neutron_plugin_contrail',
-    version=datetime.now().strftime('%Y.%m+%d%H%M%S.cw'),
+    version=get_version(),
     packages=find_packages(),
     package_data={'': ['*.html', '*.css', '*.xml']},
     zip_safe=False,
