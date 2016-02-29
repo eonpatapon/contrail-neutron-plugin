@@ -12,11 +12,13 @@ def requirements(filename):
 
 
 def get_version():
+    """The generated version format is <branchName>+git<abbrevSha>. 
+    If the required git commands fail, it falls back to %Y.%m+%d%H%M%S.cw"""
     import subprocess
     from datetime import datetime
     try:
         branch=subprocess.check_output(['git', 'describe', '--tags', '--abbrev=0'])
-        sha=subprocess.check_output(['git', 'describe', '--always'])
+        sha=subprocess.check_output(['git', 'log', '--abbrev', '--format=format:%h', '-n', '1'])
         return "%s+git%s" % (branch.strip(), sha.strip())
     except subprocess.CalledProcessError:
         return datetime.now().strftime('%Y.%m+%d%H%M%S.cw')
