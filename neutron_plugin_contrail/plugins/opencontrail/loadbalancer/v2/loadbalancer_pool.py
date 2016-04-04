@@ -15,7 +15,7 @@ except ImportError:
     from oslo_utils import uuidutils
 from vnc_api.vnc_api import *
 
-from .. resource_manager import ResourceManager
+from .. resource_manager import ResourceManager, EntityInUse
 from .. resource_manager import LoadbalancerMethodInvalid
 
 import uuid
@@ -38,6 +38,12 @@ class LoadbalancerPoolManager(ResourceManager):
         for key, mapping in self._loadbalancer_pool_type_mapping.iteritems():
             if mapping in pool:
                 setattr(props, key, pool[mapping])
+        sp = pool['session_persistence']
+        if sp is not None:
+            if 'type' in sp:
+                props.session_persistence = sp['type']
+            if 'cookie_name' in sp:
+                props.persistence_cookie_name = sp['cookie_name']
         return props
 
     def _get_listeners(self, pool):
@@ -56,6 +62,7 @@ class LoadbalancerPoolManager(ResourceManager):
             'description': self._get_object_description(pool),
             'status': self._get_object_status(pool),
             'listeners': self._get_listeners(pool),
+            'session_persistence': None,
         }
 
         props = pool.get_loadbalancer_pool_properties()
@@ -63,6 +70,12 @@ class LoadbalancerPoolManager(ResourceManager):
             value = getattr(props, key, None)
             if value is not None:
                 res[mapping] = value
+
+        if props.session_persistence:
+            sp = {'type': props.session_persistence}
+            if props.session_persistence == 'APP_COOKIE':
+                sp['cookie_name'] = props.persistence_cookie_name
+            res['session_persistence'] = sp
 
         res['provider'] = pool.get_loadbalancer_pool_provider()
 
@@ -103,10 +116,10 @@ class LoadbalancerPoolManager(ResourceManager):
         return self._api.loadbalancer_pool_delete(id=id)
 
     def get_exception_notfound(self, id=None):
-        return loadbalancer.PoolNotFound(pool_id=id)
+        return loadbalancerv2.EntityNotFound(name=self.neutron_name, id=id)
 
     def get_exception_inuse(self, id=None):
-        return loadbalancer.PoolInUse(pool_id=id)
+        return EntityInUse(name=self.neutron_name, id=id)
 
     @property
     def neutron_name(self):
@@ -136,7 +149,8 @@ class LoadbalancerPoolManager(ResourceManager):
             try:
                 ll = self._api.loadbalancer_listener_read(id=p['listener_id'])
             except NoIdError:
-                raise loadbalancer.EntityNotFound(id=p['listener_id'])
+                raise loadbalancerv2.EntityNotFound(name='Listener',
+                                                    id=p['listener_id'])
             project_id = ll.parent_uuid
             if str(uuid.UUID(tenant_id)) != project_id:
                 raise n_exc.NotAuthorized()
@@ -159,15 +173,35 @@ class LoadbalancerPoolManager(ResourceManager):
 
 
         if ll:
+            pool_exists = ll.get_loadbalancer_pool_back_refs()
+            if pool_exists is not None:
+                raise loadbalancerv2.OnePoolPerListener(
+                                     listener_id=p['listener_id'],
+                                     pool_id=pool_exists[0]['uuid'])
             pool.set_loadbalancer_listener(ll)
 
         self._api.loadbalancer_pool_create(pool)
         return self.make_dict(pool)
 
+    def _update_pool_properties(self, props, pool):
+        change = self.update_properties_subr(props, pool)
+        if 'session_persistence' in pool:
+            sp = pool['session_persistence']
+            new_type = sp.get('type', None)
+            if props.session_persistence != new_type:
+                props.session_persistence = new_type
+                change = True
+            new_cookie_name = sp.get('cookie_name', None)
+            if props.persistence_cookie_name != new_cookie_name and \
+                    props.session_persistence == 'APP_COOKIE':
+                props.persistence_cookie_name = new_cookie_name
+                change = True
+        return change
+
     def update_properties(self, pool_db, id, p):
         props = pool_db.get_loadbalancer_pool_properties()
         change = False
-        if self.update_properties_subr(props, p):
+        if self._update_pool_properties(props, p):
             pool_db.set_loadbalancer_pool_properties(props)
             change = True
 

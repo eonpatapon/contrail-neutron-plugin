@@ -9,7 +9,19 @@ try:
 except ImportError:
     from neutron_lbaas.extensions import loadbalancer
 
-from neutron.openstack.common import uuidutils
+try:
+    from neutron.openstack.common import uuidutils
+except ImportError:
+    from oslo_utils import uuidutils
+
+try:
+    from neutron.common.config import cfg
+except ImportError:
+    try:
+        from oslo.config import cfg
+    except ImportError:
+        from oslo_config import cfg
+
 from neutron.common import exceptions as n_exc
 
 from vnc_api.vnc_api import IdPermsType, NoIdError
@@ -41,6 +53,29 @@ class LoadbalancerMemberManager(ResourceManager):
     def _get_member_pool_id(self, member):
         pool_uuid = member.parent_uuid
         return pool_uuid
+
+    def _get_object_status(self, member):
+        endpoint = "http://%s:%s" % (cfg.CONF.COLLECTOR.analytics_api_ip,
+                                     cfg.CONF.COLLECTOR.analytics_api_port)
+        analytics = analytics_client.Client(endpoint)
+        path = "/analytics/uves/service-instance/"
+        fqdn_uuid = "%s?cfilt=UveLoadbalancer" % member.parent_uuid
+        try:
+            lb_stats = analytics.request(path, fqdn_uuid)
+            member_stats = lb_stats['UveLoadbalancer']['member_stats']
+        except Exception:
+            member_stats = []
+
+        # In case of missing analytics, return ACTIVE
+        if not member_stats:
+            return constants.ACTIVE
+
+        for member_stat in member_stats:
+            if member_stat['uuid'] == member.uuid and \
+                member_stat['status'] == 'ACTIVE':
+                    return member_stat['status']
+
+        return constants.DOWN
 
     def make_dict(self, member, fields=None):
         res = {'id': member.uuid,

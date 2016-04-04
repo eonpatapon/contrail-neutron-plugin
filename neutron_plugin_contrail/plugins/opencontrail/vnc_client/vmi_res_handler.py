@@ -516,11 +516,18 @@ class VMInterfaceMixin(object):
         if hasattr(vmi_obj, 'add_virtual_machine_interface_bindings'):
             # pick binding keys from neutron repr and persist as kvp elements.
             # it is assumed allowing/denying oper*key is done at neutron-server.
-            vmi_binding_kvps = dict((k.replace('binding:',''), v)
-                for k,v in port_q.items() if k.startswith('binding:'))
-            for k,v in vmi_binding_kvps.items():
-                vmi_obj.add_virtual_machine_interface_bindings(
-                    vnc_api.KeyValuePair(key=k, value=v), elem_position=k)
+            if not update:
+                vmi_binding_kvps = dict((k.replace('binding:',''), v)
+                    for k,v in port_q.items() if k.startswith('binding:'))
+                vmi_obj.set_virtual_machine_interface_bindings(
+                    vnc_api.KeyValuePairs([vnc_api.KeyValuePair(k,v)
+                                  for k,v in vmi_binding_kvps.items()]))
+            else:
+                vmi_binding_kvps = dict((k.replace('binding:',''), v)
+                    for k,v in port_q.items() if k.startswith('binding:'))
+                for k,v in vmi_binding_kvps.items():
+                    vmi_obj.add_virtual_machine_interface_bindings(
+                        vnc_api.KeyValuePair(key=k, value=v))
 
         return vmi_obj
 
@@ -894,30 +901,21 @@ class VMInterfaceGetHandler(res_handler.ResourceGetHandler, VMInterfaceMixin):
             vmi_objs_t = pool.spawn(self._resource_list,
                                     parent_id=project_ids, back_refs=True)
 
-        # if admin no need to filter we can retrieve all the ips object
-        # with only one call
-        if context['is_admin']:
-            iip_list_handler = res_handler.InstanceIpHandler(self._vnc_lib)
-            iip_objs_t = pool.spawn(iip_list_handler.get_iip_obj_list,
-                                    detail=True)
-
         pool.waitall()
 
         vn_objs = vn_objs_t._exit_event._result
-        if context['is_admin']:
-            iips_objs = iip_objs_t._exit_event._result
-        else:
-            vn_ids = [vn_obj.uuid for vn_obj in vn_objs]
-            iip_list_handler = res_handler.InstanceIpHandler(self._vnc_lib)
-            iips_objs = iip_list_handler.get_iip_obj_list(back_ref_id=vn_ids,
-                                                          detail=True)
 
         vmi_objs = []
         if vmi_objs_t is not None:
-            vmi_objs = vmi_objs_t._exit_event._result
+            vmi_objs = vmi_objs_t._exit_event._result or []
 
         if vmi_obj_uuids_t is not None:
-            vmi_objs.extend(vmi_obj_uuids_t._exit_event._result)
+            vmi_objs.extend(vmi_obj_uuids_t._exit_event._result or [])
+
+        vmis_ids = [vmi.uuid for vmi in vmi_objs]
+        iip_list_handler = res_handler.InstanceIpHandler(self._vnc_lib)
+        iips_objs = iip_list_handler.get_iip_obj_list(back_ref_id=vmis_ids,
+                                                      detail=True)
 
         return vmi_objs, vn_objs, iips_objs
 
@@ -954,6 +952,10 @@ class VMInterfaceGetHandler(res_handler.ResourceGetHandler, VMInterfaceMixin):
         return self._resource_list(**kwargs)
 
     def resource_list(self, context=None, filters=None, fields=None):
+        if (filters.get('device_owner') == 'network:dhcp' or
+                'network:dhcp' in filters.get('device_owner', [])):
+            return []
+
         if not context:
             context = {'is_admin': True}
 

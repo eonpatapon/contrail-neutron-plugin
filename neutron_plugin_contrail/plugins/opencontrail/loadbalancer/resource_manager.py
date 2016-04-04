@@ -21,6 +21,8 @@ from vnc_api.vnc_api import NoIdError, RefsExistError
 class LoadbalancerMethodInvalid(n_exc.BadRequest):
     message = "Method %(lb_method)s not supported for pool %(pool_id)s"
 
+class EntityInUse(n_exc.InUse):
+    message = "%(name)s %(id)s is in use"
 
 @six.add_metaclass(ABCMeta)
 class ResourceManager(object):
