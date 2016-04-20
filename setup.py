@@ -1,11 +1,15 @@
 #
 # Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
 #
-
+import os
 from setuptools import setup, find_packages
 
 
 def requirements(filename):
+    # no requirements needed for a devstack install
+    # FIXME: find a better way to tell we are in devstack
+    if '/opt/stack' in os.environ.get('SUDO_COMMAND', ''):
+        return []
     with open(filename) as f:
         lines = f.read().splitlines()
     return lines
