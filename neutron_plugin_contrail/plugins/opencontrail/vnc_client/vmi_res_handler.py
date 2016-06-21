@@ -773,6 +773,8 @@ class VMInterfaceUpdateHandler(res_handler.ResourceUpdateHandler,
     def resource_update(self, context, port_id, port_q):
         contrail_extensions_enabled = self._kwargs.get(
             'contrail_extensions_enabled', False)
+        apply_subnet_host_routes = self._kwargs.get(
+            'apply_subnet_host_routes', False)
         port_q['id'] = port_id
         try:
             vmi_obj = self._resource_get(id=port_q.get('id'),
@@ -781,6 +783,8 @@ class VMInterfaceUpdateHandler(res_handler.ResourceUpdateHandler,
             raise self._raise_contrail_exception(
                 'PortNotFound', port_id=port_q.get('id'),
                 resource='port')
+
+        old_vmi_obj = vmi_obj
 
         net_id = vmi_obj.get_virtual_network_refs()[0]['uuid']
         vn_obj = self._vnc_lib.virtual_network_read(id=net_id)
@@ -799,6 +803,14 @@ class VMInterfaceUpdateHandler(res_handler.ResourceUpdateHandler,
                                      fields=['instance_ip_back_refs'])
         ret_port_q = self._vmi_to_neutron_port(
             vmi_obj, extensions_enabled=contrail_extensions_enabled)
+
+        # create interface route table for the port if
+        # subnet has a host route for aap ip.
+        if apply_subnet_host_routes and 'allowed_address_pairs' in port_q:
+            subnet_host_handler = subnet_handler.SubnetHostRoutesHandler(
+                self._vnc_lib)
+            subnet_host_handler.port_check_and_add_iface_route_table(
+                ret_port_q['fixed_ips'], vn_obj, vmi_obj, old_vmi_obj)
 
         return ret_port_q
 
