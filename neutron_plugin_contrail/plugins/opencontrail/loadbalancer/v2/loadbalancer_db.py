@@ -158,7 +158,7 @@ class LoadBalancerPluginDbV2(LoadBalancerPluginBaseV2):
             raise n_exc.BadRequest(resource='member', msg=str(ex))
 
     def update_pool_member(self, context, id, pool_id, member):
-        return self._member_manager.update(context, id, pool_id, member)
+        return self._member_manager.update(context, id, member)
 
     def delete_pool_member(self, context, id, pool_id):
         return self._member_manager.delete(context, id, pool_id)
@@ -192,3 +192,35 @@ class LoadBalancerPluginDbV2(LoadBalancerPluginBaseV2):
 
     def statuses(self, context, loadbalancer_id):
         pass
+
+    def get_l7policies(self, context, filters=None, fields=None):
+        pass
+
+    def get_l7policy(self, context, id, fields=None):
+        pass
+
+    def create_l7policy(self, context, l7policy):
+        pass
+
+    def update_l7policy(self, context, id, l7policy):
+        pass
+
+    def delete_l7policy(self, context, id):
+        pass
+
+    def get_l7policy_rules(self, context, l7policy_id,
+                           filters=None, fields=None):
+        pass
+
+    def get_l7policy_rule(self, context, id, l7policy_id, fields=None):
+        pass
+
+    def create_l7policy_rule(self, context, rule, l7policy_id):
+        pass
+
+    def update_l7policy_rule(self, context, id, rule, l7policy_id):
+        pass
+
+    def delete_l7policy_rule(self, context, id, l7policy_id):
+        pass
+

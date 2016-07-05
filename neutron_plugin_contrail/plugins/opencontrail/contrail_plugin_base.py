@@ -40,11 +40,17 @@ try:
 except ImportError:
     from oslo_log import log as logging
 
+try:
+    from neutron_lib import exceptions as libexc
+except ImportError:
+    libexc = None
 
 # Constant for max length of network interface names
 # eg 'bridge' in the Network class or 'devname' in
 # the VIF class
 NIC_NAME_LEN = 14
+
+VIF_TYPE_VROUTER = 'vrouter'
 
 LOG = logging.getLogger(__name__)
 
@@ -98,6 +104,8 @@ def _raise_contrail_error(info, obj_name):
                 raise getattr(securitygroup, exc_name)(**info)
             if hasattr(allowedaddresspairs, exc_name):
                 raise getattr(allowedaddresspairs, exc_name)(**info)
+            if libexc and hasattr(libexc, exc_name):
+                raise getattr(libexc, exc_name)(**info)
         raise exc.NeutronException(**info)
 
 
@@ -504,7 +512,7 @@ class NeutronPluginContrailCoreBase(neutron_plugin_base_v2.NeutronPluginBaseV2,
                                                             port_id)
             else:
                 port['port'][portbindings.VIF_TYPE] = \
-                        portbindings.VIF_TYPE_VROUTER
+                        VIF_TYPE_VROUTER
                 self._delete_vhostuser_vif_details_from_port(port['port'],
                                                              original)
         else:

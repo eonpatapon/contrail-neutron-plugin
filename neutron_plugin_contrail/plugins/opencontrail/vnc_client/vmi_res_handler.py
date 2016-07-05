@@ -128,8 +128,12 @@ class VMInterfaceMixin(object):
                     continue
 
             ip_addr = ip_obj.get_instance_ip_address()
-            subnet_id = self._ip_address_to_subnet_id(ip_addr, vn_obj,
-                                                      port_req_memo)
+            subnet_id = getattr(ip_obj, 'subnet_uuid', None)
+            if not subnet_id:
+                subnet_id = self._ip_address_to_subnet_id(ip_addr, vn_obj,
+                                                          port_req_memo)
+                ip_obj.set_subnet_uuid(subnet_id)
+                self._vnc_lib.instance_ip_update(ip_obj)
             ip_q_dict = {'ip_address': ip_addr,
                          'subnet_id': subnet_id}
 
@@ -390,20 +394,21 @@ class VMInterfaceMixin(object):
                 except vnc_exc.RefsExistError:
                     pass
 
-    def _set_vmi_security_groups(self, vmi_obj, sec_group_list,
-                                 create_no_rule=False):
+    def _set_vmi_security_groups(self, vmi_obj, sec_group_list):
         vmi_obj.set_security_group_list([])
+        # When there is no-security-group for a port,the internal
+        # no_rule group should be used.
+        if not sec_group_list:
+            sg_obj = res_handler.SGHandler(
+                self._vnc_lib).get_no_rule_security_group()
+            vmi_obj.add_security_group(sg_obj)
+
         for sg_id in sec_group_list or []:
             # TODO() optimize to not read sg (only uuid/fqn needed)
             sg_obj = self._vnc_lib.security_group_read(id=sg_id)
             vmi_obj.add_security_group(sg_obj)
 
-        # When there is no-security-group for a port,the internal
-        # no_rule group should be used.
-        if create_no_rule and not sec_group_list:
-            sg_obj = res_handler.SGHandler(
-                self._vnc_lib).get_no_rule_security_group()
-            vmi_obj.add_security_group(sg_obj)
+
 
     def _set_vmi_extra_dhcp_options(self, vmi_obj, extra_dhcp_options):
         dhcp_options = []
@@ -492,8 +497,7 @@ class VMInterfaceMixin(object):
 
         if 'security_groups' in port_q:
             self._set_vmi_security_groups(vmi_obj,
-                                          port_q.get('security_groups'),
-                                          update)
+                                          port_q.get('security_groups'))
 
         if 'admin_state_up' in port_q:
             id_perms = vmi_obj.get_id_perms()
