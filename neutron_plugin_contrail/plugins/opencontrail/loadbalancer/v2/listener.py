@@ -47,10 +47,14 @@ class ListenerManager(ResourceManager):
         return props
 
     def _get_loadbalancers(self, ll):
+        loadbalancers = []
+        lb = {}
         lb_refs = ll.get_loadbalancer_refs()
         if lb_refs is None:
             return None
-        return [lb_refs[0]['uuid']]
+        lb['id'] = lb_refs[0]['uuid']
+        loadbalancers.append(lb)
+        return loadbalancers
 
     def make_dict(self, ll, fields=None):
         props = ll.get_loadbalancer_listener_properties()
@@ -61,7 +65,9 @@ class ListenerManager(ResourceManager):
                'protocol': props.protocol,
                'protocol_port': props.protocol_port,
                'admin_state_up': props.admin_state,
-               'loadbalancers': self._get_loadbalancers(ll)}
+               'loadbalancers' : self._get_loadbalancers(ll)}
+        if res['loadbalancers']:
+            res['loadbalancer_id'] = res['loadbalancers'][0]['id']
 
         return self._fields(res, fields)
 
@@ -113,8 +119,8 @@ class ListenerManager(ResourceManager):
             lb = None
 
         obj_uuid = uuidutils.generate_uuid()
-        name = self._get_resource_name('listener', project,
-                                       l['name'], obj_uuid)
+        name = self._get_resource_name('loadbalancer-listener',
+                                       project, l['name'], obj_uuid)
         id_perms = IdPermsType(enable=True, description=l['description'])
         ll = LoadbalancerListener(name, project, id_perms=id_perms,
                                   display_name=l['name'])

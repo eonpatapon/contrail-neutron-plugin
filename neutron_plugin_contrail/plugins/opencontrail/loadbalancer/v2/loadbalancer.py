@@ -34,6 +34,8 @@ class LoadbalancerManager(ResourceManager):
         'vip_address': 'vip_address',
         'vip_subnet_id': 'vip_subnet_id',
         'admin_state': 'admin_state_up',
+        'provisioning_status': 'provisioning_status',
+        'operating_status': 'operating_status',
     }
 
     @property
@@ -90,6 +92,8 @@ class LoadbalancerManager(ResourceManager):
                'vip_subnet_id': props.vip_subnet_id,
                'vip_address': props.vip_address,
                'admin_state_up': props.admin_state,
+               'provisioning_status': props.provisioning_status,
+               'operating_status': props.operating_status,
                'listeners': self._get_listeners(lb)}
 
         return self._fields(res, fields)
@@ -185,6 +189,9 @@ class LoadbalancerManager(ResourceManager):
         Create a loadbalancer.
         """
         l = loadbalancer['loadbalancer']
+        if (l['provider'] == attributes.ATTR_NOT_SPECIFIED):
+            l['provider'] = "opencontrail"
+        sas_obj = self.check_provider_exists(l['provider'])
         tenant_id = self._get_tenant_id_for_create(context, l)
         project = self._project_read(project_id=tenant_id)
 
@@ -192,19 +199,22 @@ class LoadbalancerManager(ResourceManager):
         name = self._get_resource_name('loadbalancer', project,
                                        l['name'], obj_uuid)
         id_perms = IdPermsType(enable=True, description=l['description'])
-        lb = Loadbalancer(name, project, id_perms=id_perms,
-                          display_name=l['name'])
-        lb.uuid = obj_uuid
+        lb = Loadbalancer(name, project, uuid=obj_uuid,
+                          loadbalancer_provider=l['provider'],
+                          id_perms=id_perms, display_name=l['name'])
+        lb.set_service_appliance_set(sas_obj)
 
         vmi, vip_address = self._create_virtual_interface(project,
             obj_uuid, l['vip_subnet_id'], l.get('vip_address'))
         lb.set_virtual_machine_interface(vmi)
 
+        l['provisioning_status'] = 'ACTIVE'
+        l['operating_status'] = 'ONLINE'
         props = self.make_properties(l)
         props.set_vip_address(vip_address)
         lb.set_loadbalancer_properties(props)
-        self._api.loadbalancer_create(lb)
 
+        self._api.loadbalancer_create(lb)
         return self.make_dict(lb)
 
     def delete(self, context, id):
